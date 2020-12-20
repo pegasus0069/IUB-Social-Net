@@ -1,0 +1,68 @@
+/*--- big screen ----*/
+
+@media screen and (max-width: 1920px) and (min-width: 1601px) {
+
+}
+
+@media screen and (max-width: 1600px) and (min-width: 1400px) {
+    
+}
+
+@media screen and (max-width: 1281px) and (min-width: 1024px) {
+    
+    footer .widget-title h4 {
+        font-size: 14px;
+    }
+}
+
+
+/*--- tablet landscape ---*/
+
+@media screen and (max-width: 1024px) {
+
+}
+
+
+/*--- tablet view ---*/
+
+@media screen and (max-width: 980px) {
+    
+}
+
+@media screen and (max-width: 768px) {
+    
+}
+
+@media screen and (max-width: 640px) {
+    p {
+        font-size: 13px;
+    }
+    .contact-form form .form-group {
+        margin-right: 0;
+        width: 100%;
+    }
+    .contact-form {
+        padding: 30px;
+        width: 100%;
+    }
+    .cntct-adres {
+        width: 100%;
+    }
+    .contct-info {
+        box-shadow: 0 0 10px #e6e6e6;
+        margin-bottom: 0;
+    }
+    .
+    footer {
+        padding: 50px 0;
+    }
+    }
+
+@media screen and (max-width: 360px) {
+    
+
+}
+
+@media screen and (max-width: 320px) {
+    
+}
