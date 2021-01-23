@@ -18,6 +18,10 @@
 #### 2. Download this code, and from command prompt run:
         npm install
 
+        npm init
+
+        npm install socket.io@2.4.1 bcrypt ejs express express-formidable fs http jsonwebtoken mongodb
+
         npm install -g nodemon
 
 #### 3. To run the code, run:

@@ -15,7 +15,7 @@
 <script>
     
     window.user = null;
-    var socketIO = io("http://103.217.108.240:3000");
+    var socketIO = io("http://103.217.108.240:3000", {transports: ['websocket']});
 
     function getUser() {
         if (localStorage.getItem("accessToken")) {
@@ -37,6 +37,27 @@
 							showAddPost();
 							showNewsfeed();
                         }
+
+                        if (typeof isSearchResults !== "undefined" && isSearchResults) {
+                            showSearchResults();
+                        }
+
+                        if (typeof isFriends !== "undefined" && isFriends) {
+                            showFriends();
+                        }
+
+                        if (typeof isPages !== "undefined" && isPages) {
+                            getPages();
+                        }
+
+                        if (typeof isPageDetail !== "undefined" && isPageDetail) {
+                            getPageDetail();
+                        }
+
+                        if (typeof isRightSidebar !== "undefined" && isRightSidebar) {
+                            getMyPages();
+                        }
+
                     } else {
                         localStorage.removeItem("accessToken");
                     }

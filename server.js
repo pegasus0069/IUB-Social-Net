@@ -16,20 +16,28 @@ var jwt = require("jsonwebtoken");
 var accessTokenSecret = "myAccessTokenSecret1234567890";
 
 app.use("/public", express.static(__dirname + "/public"));
+app.use("/vendor", express.static(__dirname + "/vendor"));
 app.set("view engine", "ejs");
 
-var socketIO = require("socket.io")(http);
+var socketIO = require('socket.io')(http);
 var socketID = "";
 var users = [];
 
 var mainURL = "http://103.217.108.240:3000";
+var port = process.env.PORT || 3000;
+
 
 socketIO.on("connection", function (socket) {
-	console.log("User connected", socket.id);
+	//console.log("User connected", socket.id);
 	socketID = socket.id;
+	socket.on('message', function (data) {
+        console.log('Sending update!');
+        socketIO.emit('update', 'Working!');
+    });
 });
 
-http.listen(3000, function () {
+http.listen(port, function () {
+	console.log('listening on *:' + port);
 	console.log("Server started at " + mainURL);
 
 	mongoClient.connect("mongodb://localhost:27017", function (error, client) {
@@ -372,29 +380,26 @@ http.listen(3000, function () {
 						});
 					}
 
-					database.collection("posts").insertOne({
-						"caption": caption,
-						"image": image,
-						"video": video,
-						"type": type,
-						"createdAt": createdAt,
-						"likers": [],
-						"comments": [],
-						"shares": [],
-						"user": {
-							"_id": user._id,
-							"name": user.name,
-							"username": user.username,
-							"profileImage": user.profileImage
-						}
-					}, function (error, data) {
+					if (type == "page_post") {
+						database.collection("pages").findOne({
+							"_id": ObjectId(_id)
+						}, function (error, page) {
+							if (page == null) {
+								result.json({
+									"status": "error",
+									"message": "Page does not exist."
+								});
+								return;
+							} else {
+								if (page.user._id.toString() != user._id.toString()) {
+									result.json({
+										"status": "error",
+										"message": "Sorry, you do not own this page."
+									});
+									return;
+								}
 
-						database.collection("users").updateOne({
-							"accessToken": accessToken
-						}, {
-							$push: {
-								"posts": {
-									"_id": data.insertedId,
+								database.collection("posts").insertOne({
 									"caption": caption,
 									"image": image,
 									"video": video,
@@ -402,17 +407,63 @@ http.listen(3000, function () {
 									"createdAt": createdAt,
 									"likers": [],
 									"comments": [],
-									"shares": []
-								}
+									"shares": [],
+									"user": {
+										"_id": page._id,
+										"name": page.name,
+										"profileImage": page.coverPhoto
+									}
+								}, function (error, data) {
+									result.json({
+										"status": "success",
+										"message": "Post has been uploaded."
+									});
+								});
+							}
+						});
+					} else {
+						database.collection("posts").insertOne({
+							"caption": caption,
+							"image": image,
+							"video": video,
+							"type": type,
+							"createdAt": createdAt,
+							"likers": [],
+							"comments": [],
+							"shares": [],
+							"user": {
+								"_id": user._id,
+								"name": user.name,
+								"username": user.username,
+								"profileImage": user.profileImage
 							}
 						}, function (error, data) {
-
-							result.json({
-								"status": "success",
-								"message": "Post has been uploaded."
+	
+							database.collection("users").updateOne({
+								"accessToken": accessToken
+							}, {
+								$push: {
+									"posts": {
+										"_id": data.insertedId,
+										"caption": caption,
+										"image": image,
+										"video": video,
+										"type": type,
+										"createdAt": createdAt,
+										"likers": [],
+										"comments": [],
+										"shares": []
+									}
+								}
+							}, function (error, data) {
+	
+								result.json({
+									"status": "success",
+									"message": "Post has been uploaded."
+								});
 							});
 						});
-					});
+					}
 				}
 			});
 		});
@@ -431,6 +482,14 @@ http.listen(3000, function () {
 
 					var ids = [];
 					ids.push(user._id);
+
+					for (var a = 0; a < user.pages.length; a++) {
+						ids.push(user.pages[a]._id);
+					}
+
+					for (var a = 0; a < user.friends.length; a++) {
+						ids.push(user.friends[a]._id);
+					}
 
 					database.collection("posts")
 					.find({
@@ -878,16 +937,127 @@ http.listen(3000, function () {
 				}
 			}).toArray(function (error, data) {
 
-				result.json({
-					"status": "success",
-					"message": "Record has been fetched",
-					"data": data
+				database.collection("pages").find({
+					"name": {
+						$regex: ".*" + query + ".*",
+						$options: "i"
+					}
+				}).toArray(function (error, pages){
+					result.json({
+						"status": "success",
+						"message": "Record has been fetched",
+						"data": data,
+						"pages": pages
+					});
 				});
 			});
 		});
 
 		app.get("/friends", function (request, result) {
 			result.render("friends");
+		});
+
+		app.post("/getFriendsChat", function (request, result) {
+			var accessToken = request.fields.accessToken;
+			var _id = request.fields._id;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again!"
+					});
+				} else {
+					var index = user.friends.findIndex(function(friend) {
+						return friend._id == _id
+					});
+					var inbox = user.friends[index].inbox;
+
+					result.json({
+						"status": "success",
+						"message": "Record has been fetched",
+						"data": inbox	
+					});
+				}
+			});
+		});
+
+		app.post("/sendMessage", function (request, result) {
+			var accessToken = request.fields.accessToken;
+			var _id = request.fields._id;
+			var message = request.fields.message;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again!"
+					});
+				} else {
+					var me = user;
+					database.collection("users").findOne({
+						"_id": ObjectId(_id)
+					}, function (error, user) {
+						if (user == null) {
+							result.json({
+								"status": "error",
+								"message": "User does not exist."
+							});
+						} else {
+							database.collection("users").updateOne({
+								$and: [{
+									"_id": ObjectId(_id)
+								}, {
+									"friends._id": me._id
+								}]
+							}, {
+								$push: {
+									"friends.$.inbox": {
+										"_id": ObjectId(),
+										"message": message,
+										"from": me._id
+									}
+								}
+							}, function (error, data) {
+								database.collection("users").updateOne({
+									$and: [{
+										"_id": me._id
+									}, {
+										"friends._id": user._id
+									}]
+								}, {
+									$push: {
+										"friends.$.inbox": {
+											"_id": ObjectId(),
+											"message": message,
+											"from": me._id
+										}
+									}
+								}, function (error, data) {
+
+									socketIO.to(users[user._id]).emit("messageReceived", {
+										"message": message,
+										"from": me._id
+									});
+
+									result.json({
+										"status": "success",
+										"message": "Message has been sent."
+									});
+								});
+							});
+						}
+					});
+				}
+			});
+		});
+
+		app.get("/underconstruction", function (request, result) {
+			result.render("underconstruction");
 		});
 
 		app.get("/inbox", function (request, result) {
@@ -899,11 +1069,558 @@ http.listen(3000, function () {
 		});
 
 		app.get("/groups", function (request, result) {
-			result.render("groups");
+			result.render("underconstruction");
 		});
 
 		app.get("/notifications", function (request, result) {
-			result.render("notifications");
+			result.render("underconstruction");
+		});
+
+		app.post("/markNotificationsAsRead", function (request, result) {
+			var accessToken = request.fields.accessToken;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again."
+					});
+				} else {
+					database.collection("users").updateMany({
+						$and: [{
+							"accessToken": accessToken
+						}, {
+							"notifications.isRead": false
+						}]
+					}, {
+						$set: {
+							"notifications.$.isRead": true
+						}
+					}, function (error, data) {
+						result.json({
+							"status": "success",
+							"message": "Notifications has been marked as read."
+						});
+					});
+				}
+			});
+		});
+
+		app.get("/verifyEmail/:email/:verification_token", function (request, result) {
+			// Under Construction
+		});
+
+		app.get("/ResetPassword/:email/:reset_token", function (request, result) {
+			// Under Construction
+		});
+
+		app.get("/forgot-password", function (request, result) {
+			// Under Construction
+		});
+
+		app.post("/sendRecoveryLink", function (request, result) {
+			// Under Construction
+		});
+
+		app.post("/changePassword", function (request, result) {
+			// Under Construction
+		});
+
+
+
+		app.post("/toggleJoinGroup", function (request, result) {
+			// Under Construction
+		});
+
+
+		app.post("/connectSocket", function (request, result) {
+			var accessToken = request.fields.accessToken;
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again."
+					});
+				} else {
+					users[user._id] = socketID;
+					result.json({
+						"status": "status",
+						"message": "Socket has been connected."
+					});
+				}
+			});
+		});
+
+		app.post("/sendFriendRequest", function (request, result) {
+			var accessToken = request.fields.accessToken;
+			var _id = request.fields._id;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again."
+					});
+				} else {
+					var me = user;
+					database.collection("users").findOne({
+						"_id": ObjectId(_id)
+					}, function (error, user) {
+						if (user == null){
+							result.json({
+								"status": "error",
+								"message": "User does not exist."
+							});
+						} else {
+							database.collection("users").updateOne({
+								"_id": ObjectId(_id)
+							}, {
+								$push: {
+									"friends": {
+										"_id": me._id,
+										"name": me.name,
+										"profileImage": me.profileImage,
+										"status": "Pending",
+										"sentByMe": false,
+										"inbox": []
+									}
+								}
+							}, function (error, data) {
+								database.collection("users").updateOne({
+									"_id": me._id
+								}, {
+									$push: {
+										"friends": {
+											"_id": user._id,
+											"name": user.name,
+											"profileImage": user.profileImage,
+											"status": "Pending",
+											"sentByMe": true,
+											"inbox": []
+										}
+									}
+								}, function (error, data) {
+										result.json({
+										"status": "success",
+										"message": "Friend request has been sent."
+									});
+								});
+							});
+						}
+					});
+				}
+			});
+		});
+
+		app.post("/acceptFriendRequest", function (request, result) {
+			var accessToken = request.fields.accessToken;
+			var _id =request.fields._id;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again."
+					});
+				} else {
+					var me = user;
+					database.collection("users").findOne({
+						"_id": ObjectId(_id)
+					}, function (error, user) {
+						if (user == null) {
+							result.json({
+								"status": "error",
+								"message": "User does not exist."
+							});
+						} else {
+							database.collection("users").updateOne({
+								"_id": ObjectId(_id)
+							}, {
+								$push: {
+									"notifications": {
+										"_id": ObjectId(),
+										"type": "friend_request_accepted",
+										"content": me.name + "accepted your friend request.",
+										"profileImage": me.profileImage,
+										"createdAt": new Date().getTime()
+									}
+								}
+							});
+							database.collection("users").updateOne({
+								$and: [{
+									"_id": ObjectId(_id)
+								}, {
+									"friends._id": me._id
+								}]
+							}, {
+								$set: {
+									"friends.$.status": "Accepted"
+								}
+							}, function (error, data) {
+								database.collection("users").updateOne({
+									$and: [{
+										"_id": me._id
+									}, {
+										"friends._id": user._id
+									}]
+								}, {
+									$set: {
+										"friends.$.status": "Accepted"
+									}
+								}, function (error, data) {
+									result.json({
+										"status": "success",
+										"message": "Friend request has been accepted."
+									});
+								});
+							});
+						}
+					});
+				}
+			});
+		});
+
+		app.post("/unfriend", function (request, result) {
+			var accessToken = request.fields.accessToken;
+			var _id =request.fields._id;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again."
+					});
+				} else {
+					var me = user;
+					database.collection("users").findOne({
+						"_id": ObjectId(_id)
+					}, function (error, user) {
+						if (user == null) {
+							result.json({
+								"status": "error",
+								"message": "User does not exist."
+							});
+						} else {
+							database.collection("users").updateOne({
+								"_id": ObjectId(_id)
+							}, {
+								$pull: {
+									"friends": {
+										"_id": me._id
+									}
+								}
+							}, function (error, data) {
+								database.collection("users").updateOne({
+									"_id": me._id
+								}, {
+									$pull: {
+										"friends": {
+											"_id": user._id
+										}
+									}
+								}, function (error, data) {
+									result.json({
+										"status": "success",
+										"message": "Friend has been removed."
+									});
+								});
+							});
+							database.collection("users").updateOne({
+								$and: [{
+									"_id": ObjectId(_id)
+								}, {
+									"friends._id": me._id
+								}]
+							}, {
+								$set: {
+									"friends.$.status": "Accepted"
+								}
+							}, function (error, data) {
+								database.collection("users").updateOne({
+									$and: [{
+										"_id": me._id
+									}, {
+										"friends._id": user._id
+									}]
+								}, {
+									$set: {
+										"friends.$.status": "Accepted"
+									}
+								}, function (error, data) {
+									result.json({
+										"status": "success",
+										"message": "Friend request has been accepted."
+									});
+								});
+							});
+						}
+					});
+				}
+			});
+		});
+
+		app.get("/createPage", function (request, result) {
+			result.render("createPage");
+		});
+
+		app.post("/createPage", function (request, result) {
+			
+			var accessToken = request.fields.accessToken;
+			var name = request.fields.name;
+			var domainName = request.fields.domainName;
+			var additionalInfo = request.fields.additionalInfo;
+			var coverPhoto = "";
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again."
+					});
+				} else {
+					if (request.files.coverPhoto.size > 0 && request.files.coverPhoto.type.includes("image")) {
+						coverPhoto = "public/images/" + new Date().getTime() + "_" + request.files.coverPhoto.name;
+						fileSystem.rename(request.files.coverPhoto.path, coverPhoto, function (error) {
+							//
+						});
+
+						database.collection("pages").insertOne({
+							"name": name,
+							"domainName": domainName,
+							"additionalInfo": additionalInfo,
+							"coverPhoto": coverPhoto,
+							"likers": [],
+							"user": {
+								"_id": user._id,
+								"name": user.name,
+								"profileImage": user.profileImage
+							}
+						}, function (error, data) {
+							result.json({
+								"status": "success",
+								"message": "Page has been created."
+							});
+						});
+					} else {
+						result.json({
+							"status": "error",
+							"message": "Please select a cover photo."
+						});
+					}
+				}
+			});
+		});
+
+		app.get("/pages", function (request, result) {
+			result.render("pages");
+		});
+
+		app.post("/getpages", function (request, result) {
+			var accessToken = request.fields.accessToken;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Plase login again."
+					});
+				} else {
+					database.collection("pages").find({
+						$or: [{
+							"user._id": user._id
+						}, {
+							"likers._id": user._id
+						}]
+					}).toArray(function (error, data) {
+						result.json({
+							"status": "success",
+							"message": "Record has been fetched.",
+							"data": data
+						});
+					});
+				}
+			})
+		});
+
+		app.get("/page/:_id", function (request, result) {
+			var _id = request.params._id;
+
+			database.collection("pages").findOne({
+				"_id": ObjectId(_id)
+			}, function (error, page) {
+				if (page == null) {
+					result.json({
+						"status": "error",
+						"message": "Page does not exist."	
+					});
+				} else {
+					result.render("singlePage", {
+						"_id": _id
+					});
+				}
+			});
+		});
+
+		app.post("/getPageDetail", function (request, result) {
+			var _id = request.fields._id;
+
+			database.collection("pages").findOne({
+				"_id": ObjectId(_id)
+			}, function (error, page) {
+				if (page == null) {
+					result.json({
+						"status": "error",
+						"message": "Page does not exist."
+					});
+				} else {
+					database.collection("posts").find({
+						$and: [{
+							"user._id": page._id
+						}, {
+							"type": "page_post"
+						}]
+					}).toArray(function (error, posts) {
+						result.json({
+							"status": "success",
+							"message": "Record has been fetched",
+							"data": page,
+							"posts": posts
+						});
+					});
+				}
+			});
+		});
+
+		app.post("/toggleLikePage", function (request, result) {
+			var accessToken = request.fields.accessToken;
+			var _id = request.fields._id;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again!"
+					});
+				} else {
+					database.collection("pages").findOne({
+						"_id": ObjectId(_id)
+					}, function (error, page) {
+						if (page == null) {
+							result.json({
+								"status": "error",
+								"message": "Page does not exits!"
+							});
+						} else {
+							var isLike = false;
+							for (var a = 0; a < page.likers.length; a++){
+								var liker = page.likers[a];
+
+								if (liker._id.toString() == user._id.toString()) {
+									isLiked = true;
+									break;
+								}
+							}
+
+							if (isLike) {
+								database.collection("pages").updateOne({
+									"_id": ObjectId(_id)
+								}, {
+									$pull: {
+										"likers": {
+											"_id": user._id,
+										}
+									}
+								}, function (error, data) {
+									database.collection("users").updateOne({
+										"accessToken": accessToken
+									}, {
+										$pull: {
+											"pages": {
+												"_id": ObjectId(_id)
+											}
+										}
+									}, function (error, data) {
+										result.json({
+											"status": "unliked",
+											"message": "Page has been unliked!"
+										});
+									});
+								});
+							} else {
+								database.collection("pages").updateOne({
+									"_id": ObjectId(_id)
+								}, {
+									$push: {
+										"likers": {
+											"_id": user._id,
+											"name": user.name,
+											"profileImage": user.profileImage
+										}
+									}
+								}, function (error, data) {
+									database.collection("users").updateOne({
+										"accessToken": accessToken
+									}, {
+										$push: {
+											"pages": {
+												"_id": page._id,
+												"name": page.name,
+												"coverPhoto": page.coverPhoto
+											}
+										}
+									}, function (error, data) {
+										result.json({
+											"status": "success",
+											"message": "Page has been liked!"
+										});
+									});
+								});
+							}
+						}
+					});
+				}
+			});
+		});
+
+		app.post("/getMyPages", function (request, result){
+			var accessToken = request.fields.accessToken;
+
+			database.collection("users").findOne({
+				"accessToken": accessToken
+			}, function (error, user) {
+				if (user == null) {
+					result.json({
+						"status": "error",
+						"message": "User has been logged out. Please login again!"
+					});
+				} else {
+					database.collection("pages").find({
+						"user._id": user._id
+					}).toArray(function (error, data) {
+						result.json({
+							"status": "success",
+							"message": "Record has been fetched.",
+							"data": data
+						});
+					});
+				}
+			});
 		});
 
 	});
