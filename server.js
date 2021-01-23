@@ -1527,7 +1527,7 @@ http.listen(port, function () {
 								"message": "Page does not exits!"
 							});
 						} else {
-							var isLike = false;
+							var isLiked = false;
 							for (var a = 0; a < page.likers.length; a++){
 								var liker = page.likers[a];
 
@@ -1537,7 +1537,7 @@ http.listen(port, function () {
 								}
 							}
 
-							if (isLike) {
+							if (isLiked) {
 								database.collection("pages").updateOne({
 									"_id": ObjectId(_id)
 								}, {
