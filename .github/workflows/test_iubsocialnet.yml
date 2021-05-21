@@ -52,5 +52,5 @@ jobs:
       with:
         app-name: 'iubsocialnet'
         slot-name: 'production'
-        publish-profile: ${{ secrets.AzureAppService_PublishProfile_8d2c4a27ab6b401ca2635de8aa7d83f5 }}
+        publish-profile: ${{ secrets.AzureAppService_PublishProfile_ca6849b02cf84ceda9db977b98f7ff0c }}
         package: .
