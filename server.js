@@ -40,7 +40,7 @@ http.listen(port, function () {
 	console.log('listening on *:' + port);
 	console.log("Server started at " + mainURL);
 
-	mongoClient.connect("mongodb://localhost:27017", function (error, client) {
+	mongoClient.connect("mongodb://103.217.108.240:27017", function (error, client) {
 		var database = client.db("iub_social_net");
 		console.log("Database connected.");
 
